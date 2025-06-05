@@ -1,0 +1,12 @@
+# Core dependencies
+Pillow>=10.0.0
+requests>=2.31.0
+
+# Optional dependencies for enhanced functionality
+# pathlib is included in Python 3.4+, no need to install separately
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# black>=23.0.0
+# flake8>=6.0.0
