@@ -6,7 +6,7 @@ Author: z39084yu9023jr
 Created: 2025
 Version: 3.1 - OCR理解・階層構造・表形式対応強化版 + プレフィックスオプション追加
 Requirements: Pillow, requests
-Usage: python enhanced_tech_mindmap_generator.py
+Usage: python script.py
 
 Features:
 - 高精度OCR理解によるテキスト抽出
