@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 File: script.py
-Description: 画像からマインドマップ形式のマークダウンを生成
+Description: 技術書籍のキャプチャ画像からマインドマップ形式のマークダウンを生成（強化版）
 Author: z39084yu9023jr
-Created: 2025
-Version: 3.1 - OCR理解・階層構造・表形式対応強化版 + プレフィックスオプション追加
+Created: 2024
+Version: 3.2 - OCR理解・階層構造・表形式対応強化版 + プレフィックスオプション追加 + 要約文章生成機能追加
 Requirements: Pillow, requests
-Usage: python script.py
+Usage: python enhanced_tech_mindmap_generator.py
 
 Features:
 - 高精度OCR理解によるテキスト抽出
@@ -16,6 +16,7 @@ Features:
 - 比較情報の構造化表示
 - 見開きページ対応の最適化
 - 出力ファイル名プレフィックス機能
+- JSON形式OCRデータからの要約文章生成
 """
 
 from PIL import Image, ImageEnhance, ImageFilter
@@ -29,29 +30,53 @@ from io import BytesIO
 from pathlib import Path
 import requests
 
-# 設定
+# 設定（技術書籍用に最適化）
 MAX_WIDTH = 2048
 MAX_HEIGHT = 1536
 MAX_FILE_SIZE = 1024 * 1024
 INITIAL_QUALITY = 90
+OLLAMA_IMAGE_MODEL = "yourmodel"
+OLLAMA_TEXT_MODEL = "yourmodel"
 OLLAMA_MODEL = "yourmodel"
 OLLAMA_URL = "http://localhost:11434/api/generate"
 REQUEST_TIMEOUT = 300
 
 
+# ===== 追加部分1: プロンプト定数の追加 (ファイル先頭の設定部分に追加) =====
+SUMMARY_PROMPT = """
+あなたは技術書籍や学習動画の内容をやさしく説明するアシスタントです。
+以下の内容を踏まえて、誰にでも理解しやすい形で丁寧に要約してください。
+
+【要約の条件】
+- 内容のタイトルを文章の先頭に付けて下さい
+- 難しい専門用語は使わず、もし使う場合はわかりやすく説明を入れてください
+- 一つひとつの概念を順を追って説明してください
+- 技術的な説明を省略せず、丁寧に例や背景を含めて説明してください
+- 初心者でも理解できるような配慮を心がけてください
+- あまりにも幼稚な文章表現は避けて下さい
+
+【出力形式】
+- 文章形式（マークダウン不要）
+- 説明的な文体、ある程度親しみはあるが幼稚ではない表現
+- 推論型のLLMの場合、推論を行う過程(<think>⋯</think>)は不要
+
+以下は、画像や動画のOCRから得られたテキスト情報です。この内容をわかりやすく説明してください：
+"""
+
+
 def enhance_image_for_technical_text(image):
     """
-    画像前処理
+    技術書籍用の画像前処理（OCR精度重視）
     """
-    # より強いコントラスト強化
+    # より強いコントラスト強化（薄い印刷・図表対応）
     enhancer = ImageEnhance.Contrast(image)
     image = enhancer.enhance(1.5)
     
-    # シャープネス強化
+    # シャープネス強化（文字・図表の境界明確化）
     enhancer = ImageEnhance.Sharpness(image)
     image = enhancer.enhance(1.4)
     
-    # 明度調整
+    # 明度調整（影・グラデーション補正）
     enhancer = ImageEnhance.Brightness(image)
     image = enhancer.enhance(1.1)
     
@@ -63,13 +88,13 @@ def enhance_image_for_technical_text(image):
 
 def resize_image_for_technical(image, max_width=MAX_WIDTH, max_height=MAX_HEIGHT):
     """
-    リサイズ
+    技術書籍用リサイズ（OCR可読性重視）
     """
     width, height = image.size
     
     # アスペクト比を保持しつつ、OCR最適サイズに調整
     if width <= max_width and height <= max_height:
-        # 小さすぎる場合は拡大
+        # 小さすぎる場合は拡大（OCR精度向上）
         if width < 1000 or height < 700:
             scale = min(1000 / width, 700 / height)
             new_size = (int(width * scale), int(height * scale))
@@ -83,7 +108,7 @@ def resize_image_for_technical(image, max_width=MAX_WIDTH, max_height=MAX_HEIGHT
 
 def combine_images_for_technical_book(image_paths, layout='vertical'):
     """
-    画像合成
+    技術書籍用の画像合成（見開き・複数ページ対応）
     """
     images = []
     for i, path in enumerate(image_paths):
@@ -166,7 +191,7 @@ def combine_images_for_technical_book(image_paths, layout='vertical'):
 
 def create_enhanced_mindmap_prompts():
     """
-    マインドマップ生成用プロンプト
+    強化されたマインドマップ生成用プロンプト（OCR理解・階層構造・表形式対応）
     """
     prompts = {
         'enhanced_mindmap': """あなたは、画像認識（OCRと図解理解）によって添付された書籍のページ画像から情報を抽出し、
@@ -272,7 +297,7 @@ def create_enhanced_mindmap_prompts():
 
 def compress_and_base64_for_technical(image):
     """
-    圧縮
+    技術書籍用の圧縮（OCR可読性重視）
     """
     quality = INITIAL_QUALITY
     while True:
@@ -288,9 +313,311 @@ def compress_and_base64_for_technical(image):
     return base64_str
 
 
+def run_ollama_image_to_text(base64_image):
+    """
+    画像認識 → テキスト化
+    """
+    prompt_text = """
+あなたは画像認識に長けたアシスタントです。
+
+以下の2段階のタスクを行ってください：
+
+---
+
+【Step1：自然文としての情報整形】
+
+まず、画像から読み取れる内容を以下の指針に基づいて**日本語の説明文**として自然に整形してください。
+
+▼出力指針：
+- 見出し・小見出し・段落など、文章の構造をできるだけ保持してください。
+- OCR結果はそのままではなく、助詞や接続詞を補って自然な日本語に整えてください。
+- 図や表の内容も、自然文として言語化してください。
+- 背景、因果関係、プロセスなど、文脈が読み取れる場合は補ってください。
+- 箇条書きや記号、表などは、そのままではなく**文章として再構成**してください。
+- 専門用語は必要に応じて説明を補足してください。
+
+▼出力形式：
+- 説明文形式（段落構造）
+- 教科書やナレーションのような自然で平易な日本語
+
+---
+
+【Step2：JSON形式での構造化出力】
+
+次に、Step1で生成した自然文をもとに、以下の構造に従って**情報をJSON形式**で整理してください：
+
+```json
+{
+  "見出し": "メインタイトルや章タイトル",
+  "キーワード": ["重要なキーワード1", "重要なキーワード2", "重要なキーワード3"],
+  "関係性": "概念間の関係性や構造の説明（因果関係や順序など）",
+  "詳細内容": "本文の要約や詳細な説明（自然文ベースで）",
+  "図表情報": "図・表・フローチャートなどの情報を説明文形式で",
+  "階層構造": "見出し・小見出し・箇条などの階層関係を自然言語で記述"
+}
+"""
+
+    payload = {
+        "model": OLLAMA_IMAGE_MODEL,
+        "prompt": prompt_text,
+        "images": [base64_image],
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "num_predict": 2048,
+            "repeat_penalty": 1.1,
+            "top_k": 35,
+            "num_ctx": 4096
+        }
+    }
+    
+    try:
+        response = requests.post(
+            OLLAMA_URL, 
+            json=payload, 
+            timeout=REQUEST_TIMEOUT,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if 'response' in result:
+                return result['response']
+            else:
+                print(f"予期しない応答形式: {result}")
+                return None
+        else:
+            print(f"HTTPエラー {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print(f"タイムアウトしました（{REQUEST_TIMEOUT}秒）")
+        return None
+    except Exception as e:
+        print(f"API実行エラー: {e}")
+        return None
+
+
+# ===== 追加部分2: JSON解析と文章生成関数 =====
+
+def parse_json_content(json_text):
+    """
+    JSON形式のテキストを解析し、全キーと値を取得
+    """
+    try:
+        import json
+        # JSON文字列から辞書に変換を試行
+        if isinstance(json_text, str):
+            # JSON部分を抽出（```json...```やその他の装飾を除去）
+            lines = json_text.strip().split('\n')
+            json_lines = []
+            in_json = False
+            for line in lines:
+                if '{' in line or in_json:
+                    in_json = True
+                    json_lines.append(line)
+                    if '}' in line and line.strip().endswith('}'):
+                        break
+            
+            if json_lines:
+                json_str = '\n'.join(json_lines)
+                try:
+                    data = json.loads(json_str)
+                    return data
+                except json.JSONDecodeError:
+                    # JSON解析に失敗した場合は、テキストから手動で情報を抽出
+                    return extract_info_from_text(json_text)
+            else:
+                return extract_info_from_text(json_text)
+        else:
+            return json_text
+    except Exception as e:
+        print(f"JSON解析エラー: {e}")
+        return extract_info_from_text(json_text)
+
+
+def extract_info_from_text(text):
+    """
+    JSON形式でない場合の情報抽出
+    """
+    return {
+        "全体内容": text,
+        "抽出方法": "テキスト全体からの情報抽出"
+    }
+
+
+def run_ollama_json_to_summary(json_data):
+    """
+    JSON形式のデータから要約文章を生成
+    """
+    # JSONデータから情報を構造化テキストに変換
+    structured_text = format_json_to_text(json_data)
+    
+    combined_prompt = f"{SUMMARY_PROMPT}\n\n{structured_text}"
+    
+    payload = {
+        "model": OLLAMA_TEXT_MODEL,
+        "prompt": combined_prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.2,  # 要約用に少し創造性を上げる
+            "top_p": 0.9,
+            "num_predict": 4096,  # 長い要約に対応
+            "repeat_penalty": 1.1,
+            "top_k": 40,
+            "num_ctx": 4096
+        }
+    }
+    
+    try:
+        response = requests.post(
+            OLLAMA_URL, 
+            json=payload, 
+            timeout=REQUEST_TIMEOUT,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if 'response' in result:
+                return result['response']
+            else:
+                print(f"予期しない応答形式: {result}")
+                return None
+        else:
+            print(f"HTTPエラー {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print(f"タイムアウトしました（{REQUEST_TIMEOUT}秒）")
+        return None
+    except Exception as e:
+        print(f"API実行エラー: {e}")
+        return None
+
+
+def format_json_to_text(json_data):
+    """
+    JSON形式のデータを構造化テキストに変換
+    """
+    if isinstance(json_data, dict):
+        formatted_parts = []
+        for key, value in json_data.items():
+            if isinstance(value, list):
+                value_str = "、".join(str(v) for v in value)
+                formatted_parts.append(f"【{key}】: {value_str}")
+            elif isinstance(value, dict):
+                nested_parts = []
+                for k, v in value.items():
+                    nested_parts.append(f"{k}: {v}")
+                value_str = " / ".join(nested_parts)
+                formatted_parts.append(f"【{key}】: {value_str}")
+            else:
+                formatted_parts.append(f"【{key}】: {value}")
+        
+        return "\n\n".join(formatted_parts)
+    else:
+        return str(json_data)
+
+
+def save_summary_to_file(content, output_path):
+    """
+    要約文章をファイルに保存
+    """
+    try:
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        header = f"""<!-- Generated by Enhanced Technical Summary Generator -->
+<!-- Created: {timestamp} -->
+<!-- Format: Plain Text Summary -->
+
+"""
+        full_content = header + content
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(full_content)
+        print(f"✓ 要約文章を保存しました: {output_path}")
+        return True
+    except Exception as e:
+        print(f"✗ ファイル保存エラー: {e}")
+        return False
+
+
+def generate_summary_filename(output_file=None, prefix=None):
+    """
+    要約文章用の出力ファイル名を生成
+    """
+    if output_file:
+        # 拡張子を.txtに変更
+        base_filename = os.path.splitext(output_file)[0] + "_summary.txt"
+    else:
+        base_filename = f"enhanced_summary_{int(time.time())}.txt"
+
+    if prefix:
+        filename_parts = os.path.splitext(base_filename)
+        base_name = filename_parts[0]
+        extension = filename_parts[1] if filename_parts[1] else '.txt'
+        prefixed_filename = f"{prefix}_{base_name}{extension}"
+        return prefixed_filename
+    else:
+        return base_filename
+
+
+def run_ollama_text_to_mindmap(text_input, prompt_text):
+    """
+    テキスト → マインドマップ生成
+    """
+    combined_prompt = f"""以下のテキスト情報をもとに、マインドマップ形式のMarkdownを生成してください：
+
+入力テキスト：
+{text_input}
+
+{prompt_text}"""
+    
+    payload = {
+        "model": OLLAMA_TEXT_MODEL,
+        "prompt": combined_prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.1,
+            "top_p": 0.85,
+            "num_predict": 3072,
+            "repeat_penalty": 1.1,
+            "top_k": 35,
+            "num_ctx": 4096
+        }
+    }
+    
+    try:
+        response = requests.post(
+            OLLAMA_URL, 
+            json=payload, 
+            timeout=REQUEST_TIMEOUT,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if 'response' in result:
+                return result['response']
+            else:
+                print(f"予期しない応答形式: {result}")
+                return None
+        else:
+            print(f"HTTPエラー {response.status_code}: {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print(f"タイムアウトしました（{REQUEST_TIMEOUT}秒）")
+        return None
+    except Exception as e:
+        print(f"API実行エラー: {e}")
+        return None
+
+
 def run_ollama_for_enhanced_mindmap(prompt_text, base64_image):
     """
-    マインドマップ生成用のOllama API実行
+    強化されたマインドマップ生成用のOllama API実行
     """
     payload = {
         "model": OLLAMA_MODEL,
@@ -404,7 +731,7 @@ def generate_output_filename(output_file=None, prefix=None):
     else:
         # デフォルトファイル名
         base_filename = f"enhanced_mindmap_{int(time.time())}.md"
-    
+
     if prefix:
         # プレフィックスが指定されている場合
         # ファイル名と拡張子を分離
@@ -445,9 +772,10 @@ def save_mindmap_to_file(content, output_path="enhanced_mindmap_output.md"):
 def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_type='enhanced_mindmap', 
                                       output_file=None, custom_prompt=None, prefix=None):
     """
-    マインドマップ生成メイン処理
+    強化された技術書籍マインドマップ生成メイン処理
     """
-    print("=== マインドマップ生成ツール ===")
+    print("=== 強化版技術書籍マインドマップ生成ツール ===")
+    print("OCR理解・階層構造・表形式対応版")
     
     if not check_ollama_status():
         return None
@@ -477,17 +805,81 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
             prompt = prompts.get(prompt_type, prompts['enhanced_mindmap'])
             print(f"使用プロンプト: {prompt_type}")
         
-        print("マインドマップ生成中...")
+        print("強化マインドマップ生成中...")
         print("- OCR理解によるテキスト抽出")
         print("- 図表情報の統合")
         print("- 階層構造の自動整理")
         print("- 表形式データの最適化")
+
+        # 3段階処理：画像→テキスト→マインドマップ
+        print("\n=== 3段階処理開始 ===")
+        print("段階1: 画像認識 → テキスト化")
+        extracted_text = run_ollama_image_to_text(base64_img)
         
+        if not extracted_text:
+            print("画像からのテキスト抽出に失敗しました")
+            return None
+
+##### 25/06/11 Del -->
+        # print("段階1完了 - 抽出されたテキスト:")
+        # print("-" * 50)
+        # print(extracted_text)
+        # print("-" * 50)
+##### 25/06/11 Del <--
+##### 25/06/11 Add -->
+        print("段階1完了 - 抽出されたテキスト:")
+        print("-" * 50)
+        print(extracted_text)
+        print("-" * 50)
+        
+        # JSONデータを解析
+        print("段階1-2: JSON解析と要約文章生成")
+        json_data = parse_json_content(extracted_text)
+        print("解析されたJSONデータ構造:")
+        if isinstance(json_data, dict):
+            for key in json_data.keys():
+                print(f"  - {key}")
+        
+        # JSON情報から要約文章を生成
+        summary_text = run_ollama_json_to_summary(json_data)
+        
+        if summary_text:
+            print("\n" + "="*60)
+            print("【JSONデータから生成された要約文章】")
+            print("="*60)
+            print(summary_text)
+            print("="*60)
+            
+            # 要約文章をファイルに保存
+            summary_output_path = generate_summary_filename(output_file, prefix)
+            save_summary_to_file(summary_text, summary_output_path)
+        else:
+            print("要約文章の生成に失敗しました")
+##### 25/06/11 Add <--
+
+        print("段階2: テキスト → マインドマップ生成")
+        response_jsn = run_ollama_text_to_mindmap(extracted_text, prompt)
+    
+        if not response_jsn:
+            print("テキストからのマインドマップ生成に失敗しました")
+            return None
+        else:
+            print("\n" + "="*50)
+            print("【テキストから生成されたマインドマップ】")
+            print("="*50)
+            print(response_jsn)
+            print("="*50)
+
+            # ファイル保存（プレフィックス対応）
+            output_path = generate_output_filename(output_file, prefix)
+            save_mindmap_to_file(response_jsn, output_path)
+        
+        print("段階3: 画像 → マインドマップ生成")
         response = run_ollama_for_enhanced_mindmap(prompt, base64_img)
         
         if response:
             print("\n" + "="*70)
-            print("【生成されたマインドマップ】")
+            print("【生成された強化マインドマップ】")
             print("="*70)
             print(response)
             print("="*70)
@@ -498,7 +890,7 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
             
             return response
         else:
-            print("マインドマップの生成に失敗しました")
+            print("強化マインドマップの生成に失敗しました")
             return None
         
     except Exception as e:
@@ -508,7 +900,7 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
 
 # メイン実行部分
 if __name__ == "__main__":
-    print("=== マインドマップ生成ツール ===")
+    print("=== 強化版技術書籍マインドマップ生成ツール ===")
     print("OCR理解・階層構造・表形式対応版\n")
     
     if len(sys.argv) < 2:
