@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 File: script.py
-Description: 技術書籍のキャプチャ画像からマインドマップ形式のマークダウンを生成（強化版）
+Description:画像からマインドマップ形式のマークダウンを生成（強化版）
 Author: z39084yu9023jr
 Created: 2024
 Version: 3.2 - OCR理解・階層構造・表形式対応強化版 + プレフィックスオプション追加 + 要約文章生成機能追加
@@ -44,14 +44,14 @@ REQUEST_TIMEOUT = 300
 
 # ===== 追加部分1: プロンプト定数の追加 (ファイル先頭の設定部分に追加) =====
 SUMMARY_PROMPT = """
-あなたは技術書籍や学習動画の内容をやさしく説明するアシスタントです。
+あなたは内容をやさしく説明するアシスタントです。
 以下の内容を踏まえて、誰にでも理解しやすい形で丁寧に要約してください。
 
 【要約の条件】
 - 内容のタイトルを文章の先頭に付けて下さい
 - 難しい専門用語は使わず、もし使う場合はわかりやすく説明を入れてください
 - 一つひとつの概念を順を追って説明してください
-- 技術的な説明を省略せず、丁寧に例や背景を含めて説明してください
+- 丁寧に例や背景を含めて説明してください
 - 初心者でも理解できるような配慮を心がけてください
 - あまりにも幼稚な文章表現は避けて下さい
 
@@ -88,7 +88,7 @@ def enhance_image_for_technical_text(image):
 
 def resize_image_for_technical(image, max_width=MAX_WIDTH, max_height=MAX_HEIGHT):
     """
-    技術書籍用リサイズ（OCR可読性重視）
+    リサイズ（OCR可読性重視）
     """
     width, height = image.size
     
@@ -108,7 +108,7 @@ def resize_image_for_technical(image, max_width=MAX_WIDTH, max_height=MAX_HEIGHT
 
 def combine_images_for_technical_book(image_paths, layout='vertical'):
     """
-    技術書籍用の画像合成（見開き・複数ページ対応）
+    画像合成
     """
     images = []
     for i, path in enumerate(image_paths):
@@ -127,7 +127,7 @@ def combine_images_for_technical_book(image_paths, layout='vertical'):
         raise ValueError("有効な画像が見つかりませんでした")
     
     if layout == 'vertical':
-        # 縦並び（書籍ページの順序）
+        # 縦並び（順序）
         widths = [img.width for img in images]
         heights = [img.height for img in images]
         
@@ -156,8 +156,8 @@ def combine_images_for_technical_book(image_paths, layout='vertical'):
                             new_img.putpixel((x, line_y + line_width), (200, 200, 200))
                 y_offset += page_spacing
     
-    else:  # horizontal（見開きページ対応）
-        # 横並び（見開きページなど）
+    else:  # horizontal（見開き対応）
+        # 横並び
         widths = [img.width for img in images]
         heights = [img.height for img in images]
         
@@ -194,20 +194,20 @@ def create_enhanced_mindmap_prompts():
     強化されたマインドマップ生成用プロンプト（OCR理解・階層構造・表形式対応）
     """
     prompts = {
-        'enhanced_mindmap': """あなたは、画像認識（OCRと図解理解）によって添付された書籍のページ画像から情報を抽出し、
+        'enhanced_mindmap': """あなたは、画像認識（OCRと図解理解）によって添付された画像から情報を抽出し、
 その内容をもとに「マインドマップ」をMarkdown形式で出力する専門アシスタントです。
 
 【出力フォーマット】
-- トップノード：章タイトルや節タイトルなど、最上位の見出し（Markdown見出し記号「#」を使用）
-- サブノード：小見出しや段落ごとの重要キーワード・要点（インデント2スペース＋「-」）
+- トップノード：タイトルなど、最上位の見出し（Markdown見出し記号「#」を使用）
+- サブノード：重要キーワード・要点（インデント2スペース＋「-」）
 - 枝ノード：関連キーワードや具体例（インデント4スペース＋「+」や「*」）
 - 補足説明が必要な場合は「（例：～）」「補足：～」を追加
 
 【手順】
 1. 画像入力からOCRでテキストを抽出する
-2. テキストを章→節→小節の階層構造に整理する
-3. 図・表・イラストなどの視覚情報も読み取り、文章と同様に自然な形で要点として統合する
-4. 各ノードに、固有名詞・専門用語などのキーワードや要点を箇条書きで追加する
+2. テキストを階層構造に整理する
+3. 図・表・イラストなどを要点として統合する
+4. 各ノードに、キーワードや要点を箇条書きで追加する
 5. 長い文章は1行の要約にまとめ、簡潔かつ読みやすいMarkdown形式に整形する
 
 【表形式の活用】
@@ -223,18 +223,18 @@ def create_enhanced_mindmap_prompts():
 【重要な指示】
 - ノード間の関係性が明確になるように、階層の深さや配置を工夫してください
 - 比較データや特性一覧などは、必要に応じてMarkdownのテーブル形式を使用して表現してください
-- 技術用語は `バッククォート` で囲み、重要な概念は **太字** で強調してください
+- 用語は `バッククォート` で囲み、重要な概念は **太字** で強調してください
 - 図表の情報も文章と同等に扱い、マインドマップに統合してください
 
 画像を詳細に分析し、上記の形式でマインドマップを作成してください。""",
 
-        'comprehensive_analysis': """技術書籍の内容を包括的に分析し、学習者にとって理解しやすい構造化マインドマップを作成してください。
+        'comprehensive_analysis': """内容を包括的に分析し、理解しやすい構造化マインドマップを作成してください。
 
 【分析重点項目】
-1. **階層構造の明確化**: 章→節→小節の論理的な流れを整理
+1. **階層構造の明確化**: 論理的な流れを整理
 2. **視覚情報の統合**: 図表・グラフ・イラストの内容を文章と統合
 3. **比較情報の表形式化**: 特性比較、分類表、仕様一覧などを表で表現
-4. **技術用語の体系化**: 専門用語の定義と関連性を明記
+4. **用語の体系化**: 用語の定義と関連性を明記
 5. **実装・応用例の整理**: 具体例やベストプラクティスを構造化
 
 【出力要求】
@@ -242,7 +242,7 @@ def create_enhanced_mindmap_prompts():
 - 図表情報の自然な統合
 - 階層構造の論理的整理
 - 表形式による比較情報の視覚化
-- 技術用語の適切な強調とカテゴライズ
+- 用語の適切な強調とカテゴライズ
 
 マークダウン形式で、学習効果の高い構造化されたマインドマップを生成してください。""",
 
@@ -264,7 +264,7 @@ def create_enhanced_mindmap_prompts():
 【出力形式】
 - 階層的なマークダウン構造
 - 適切な表形式による比較情報
-- 技術用語の定義と関連付け
+- 用語の定義と関連付け
 - 具体例と補足説明の統合
 
 構造化された学習しやすいマインドマップを作成してください。""",
@@ -329,12 +329,12 @@ def run_ollama_image_to_text(base64_image):
 まず、画像から読み取れる内容を以下の指針に基づいて**日本語の説明文**として自然に整形してください。
 
 ▼出力指針：
-- 見出し・小見出し・段落など、文章の構造をできるだけ保持してください。
+- 文章の構造をできるだけ保持してください。
 - OCR結果はそのままではなく、助詞や接続詞を補って自然な日本語に整えてください。
 - 図や表の内容も、自然文として言語化してください。
 - 背景、因果関係、プロセスなど、文脈が読み取れる場合は補ってください。
 - 箇条書きや記号、表などは、そのままではなく**文章として再構成**してください。
-- 専門用語は必要に応じて説明を補足してください。
+- 用語は必要に応じて説明を補足してください。
 
 ▼出力形式：
 - 説明文形式（段落構造）
@@ -772,9 +772,9 @@ def save_mindmap_to_file(content, output_path="enhanced_mindmap_output.md"):
 def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_type='enhanced_mindmap', 
                                       output_file=None, custom_prompt=None, prefix=None):
     """
-    強化された技術書籍マインドマップ生成メイン処理
+    強化されたマインドマップ生成メイン処理
     """
-    print("=== 強化版技術書籍マインドマップ生成ツール ===")
+    print("=== 強化版マインドマップ生成ツール ===")
     print("OCR理解・階層構造・表形式対応版")
     
     if not check_ollama_status():
@@ -820,13 +820,6 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
             print("画像からのテキスト抽出に失敗しました")
             return None
 
-##### 25/06/11 Del -->
-        # print("段階1完了 - 抽出されたテキスト:")
-        # print("-" * 50)
-        # print(extracted_text)
-        # print("-" * 50)
-##### 25/06/11 Del <--
-##### 25/06/11 Add -->
         print("段階1完了 - 抽出されたテキスト:")
         print("-" * 50)
         print(extracted_text)
@@ -855,7 +848,6 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
             save_summary_to_file(summary_text, summary_output_path)
         else:
             print("要約文章の生成に失敗しました")
-##### 25/06/11 Add <--
 
         print("段階2: テキスト → マインドマップ生成")
         response_jsn = run_ollama_text_to_mindmap(extracted_text, prompt)
@@ -900,7 +892,7 @@ def generate_enhanced_technical_mindmap(image_input, layout='vertical', prompt_t
 
 # メイン実行部分
 if __name__ == "__main__":
-    print("=== 強化版技術書籍マインドマップ生成ツール ===")
+    print("=== 強化版マインドマップ生成ツール ===")
     print("OCR理解・階層構造・表形式対応版\n")
     
     if len(sys.argv) < 2:
