@@ -1,15 +1,18 @@
 # base64_embedding_tech_mindmap
+
 画像からマインドマップ形式のMarkdownを生成するPythonツール。
 
 ## 機能
 
-- **高精度OCR理解**: 技術書籍の文字・図表を正確に抽出
-- **階層構造の自動認識**: 章→節→小節の論理的整理
-- **図表情報の統合**: グラフ・イラスト・写真の内容を文章に統合
-- **表形式データの変換**: 比較情報や分類データの構造化表示
-- **見開きページ対応**: 複数ページの最適な合成処理
-- **複数プロンプト対応**: 用途に応じた分析手法の選択
-- **出力ファイル名カスタマイズ**: プレフィックス機能付き
+- 高精度OCR理解: 技術書籍の文字・図表を正確に抽出
+- 階層構造の自動認識: 章→節→小節の論理的整理
+- 図表情報の統合: グラフ・イラスト・写真の内容を文章に統合
+- 表形式データの変換: 比較情報や分類データの構造化表示
+- 見開きページ対応: 複数ページの最適な合成処理
+- 複数プロンプト対応: 用途に応じた分析手法の選択
+- 出力ファイル名カスタマイズ: プレフィックス機能付き
+- JSON化処理の追加: 画像から構造化テキスト情報(JSON)を抽出
+- 要約生成の追加: JSON構造を元にした要約テキストの生成
 
 ## ファイル構成
 
@@ -89,24 +92,30 @@ python script.py ./pages/ --prefix chapter1 --output mindmap.md
 
 # カスタムプロンプトの使用
 python script.py ./pages/ --custom "あなた独自の分析指示"
+
+# JSON構造の抽出と要約の保存を有効化
+python script.py ./pages/ --json-summary
 ```
 
 ### 実用例
 
 ```bash
-# 見開きページを横並びで処理
-python script.py "./book/page*.png" --layout horizontal --prompt comprehensive --prefix chapter2
+# 見開きページを横並びで処理、要約も保存
+python script.py "./book/page*.png" --layout horizontal --prompt comprehensive --prefix chapter2 --json-summary
 
-# 単一ページの詳細分析
-python script.py single_page.jpg --prompt section --output detailed_analysis.md
+# 単一ページの詳細分析（要約付き）
+python script.py single_page.jpg --prompt section --output detailed_analysis.md --json-summary
 
 # 図表重視の分析
 python script.py "./diagrams/*.png" --prompt visual --prefix diagrams
 ```
 
 ## 出力形式
+<prefix>_mindmap.md # マインドマップ（Markdown形式）
+<prefix>_summary.txt # 要約テキスト（プレーンテキスト）
+<prefix>_structure.json # 構造情報（JSON形式）
 
-生成されるマインドマップは以下の形式です：
+### マインドマップ例（Markdown）
 
 ```markdown
 # メインタイトル
